@@ -1,5 +1,6 @@
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.business import router as business_router
 from backend.app.api.climate_risk import router as climate_risk_router
@@ -14,6 +15,19 @@ app = FastAPI(
     title="TerraCred API",
     description="Climate risk assessment for MSMEs",
     version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Register API routers
