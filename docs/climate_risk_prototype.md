@@ -32,7 +32,7 @@ No ML training, claimed predictive accuracy, GST/Udyam-based supplier verificati
 
 ## Climate-adjusted score demo
 
-The streamlined frontend starts with a Udyam certificate upload, then collects a small set of business and supplier details. The upload endpoint stores the file locally but does not extract or verify its contents; details are manually entered.
+The streamlined frontend starts with a Udyam certificate upload. The upload endpoint extracts embedded PDF text or uses OCR for scanned PDFs/images to suggest fields; users must review them, and this does not verify certificate authenticity. The form collects business coordinates and separate supplier coordinates so the system does not mistake weather at the shop for weather at the supplier.
 
 For the visual demonstration, the API accepts an assumed baseline score in the 300–900 range (default 750). If the existing climate-risk engine returns a numeric indicator, the demo applies:
 
@@ -56,3 +56,10 @@ The current demonstration score adjustment is deliberately small and symmetric: 
 Before interpreting the score, the engine performs basic checks on business coordinates, business verification status, supplier verification status, and supported weather measurements. Weather values outside broad expected ranges or missing required values are excluded from numeric scoring and surfaced as data-quality issues. The API labels the result provisional when climate evidence or valid coordinates are missing. This is a basic validation layer, not a full statistical or geospatial validation.
 
 The evidence response now contains short labels, observed values, source, period, and a plain-language explanation instead of requiring the frontend to show raw JSON. The OpenAI explainer is instructed to review data-quality checks first, then explain the possible business disruption in simple language using only the supplied observations. OpenAI does not calculate or alter the score; a rule-based explanation is used if the API is not configured or fails.
+
+
+## Supplier rainfall and wood-based businesses
+
+For each supplier with coordinates, the climate-risk endpoint separately retrieves historical precipitation evidence at the supplier location. When the supplied material text indicates wood, timber, lumber, plywood, or veneer, the explanation layer can describe the plausible pathway in plain language: rain-exposed storage or transport can make it harder to keep timber dry; damp wood may develop mould/fungal decay or swell, warp, or crack; rain-related road/handling disruptions may delay deliveries and interrupt furniture production.
+
+These are possible mechanisms, not proof of actual timber moisture, mould, damage, flooding, or a late delivery. The API records the observed maximum daily rainfall and source/period, and explicitly notes that a single daily maximum does not by itself establish that an area is rain-prone. The supplier rainfall proxy is included in the prototype's illustrative indicator only when valid supplier-location rainfall observations are available; missing supplier coordinates/data are not treated as safe. The score is still experimental and not a lending decision.
