@@ -32,6 +32,35 @@ def calculate_climate_risk(
     warnings: list[str] = []
     missing: list[str] = []
     dimensions: dict[str, dict[str, Any]] = {}
+    data_quality_checks: list[dict[str, Any]] = []
+
+    def quality_check(name: str, passed: bool, detail: str, severity: str = "warning") -> None:
+        data_quality_checks.append({
+            "check": name,
+            "status": "passed" if passed else severity,
+            "detail": detail,
+        })
+
+    location = business.get("business_location") or {}
+    lat = location.get("latitude")
+    lon = location.get("longitude")
+    valid_coordinates = (
+        isinstance(lat, (int, float)) and not isinstance(lat, bool) and -90 <= lat <= 90
+        and isinstance(lon, (int, float)) and not isinstance(lon, bool) and -180 <= lon <= 180
+    )
+    quality_check(
+        "Business coordinates",
+        valid_coordinates,
+        "Coordinates are present and within valid latitude/longitude ranges."
+        if valid_coordinates else "Missing or invalid coordinates; local weather evidence may be unavailable.",
+        "blocking",
+    )
+    quality_check(
+        "Business profile verification",
+        business.get("verification_status") == "verified",
+        "Business profile is marked verified." if business.get("verification_status") == "verified"
+        else "Business profile is unverified; entered or extracted details may be incorrect.",
+    )
 
     # Hazard dimension: only connected, available weather indicators contribute.
     hazard_signals: list[float] = []
