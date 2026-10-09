@@ -163,7 +163,7 @@ export default function App() {
         <div className="range-labels"><span>300 · Poor</span><span>550 · Fair</span><span>650 · Good</span><span>750 · Excellent</span><span>900</span></div>
         <div className="risk-summary"><div><small>CLIMATE RISK INDICATOR</small><strong>{risk ?? "—"}<span>/100</span></strong></div><div><small>CLIMATE ADJUSTMENT</small><strong>{report.climate_adjustment_points > 0 ? `−${report.climate_adjustment_points}` : report.climate_adjustment_points < 0 ? `+${Math.abs(report.climate_adjustment_points)}` : (report.climate_adjustment_points ?? "—")}<span> points</span></strong></div></div>
       </>}
-      <div className="result-explanation"><strong>How the score changed</strong><p>{report.credit_score_methodology}</p><p>The climate indicator is returned by the TerraCred backend scoring engine. Higher indicator values produce a larger score reduction in this demo. The starting score is fixed at 750 for demonstration because Udyam does not contain a credit score.</p></div>
+      <div className="result-explanation"><strong>How the score changed</strong><p>{report.credit_score_methodology}</p><p>The climate indicator comes from the backend. Values above 50 lower the demo score slightly; values below 50 raise it slightly. The starting score is assumed to be 750 because a Udyam certificate does not contain a credit score.</p></div>
       {report.data_quality && <div className="result-explanation data-quality-panel">
         <strong>1. Data quality check · {report.data_quality.status === "passed" ? "Basic checks passed" : "Needs review"}</strong>
         <p>{report.data_quality.summary}</p>
