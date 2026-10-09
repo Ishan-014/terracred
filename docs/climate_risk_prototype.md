@@ -49,3 +49,10 @@ The assessment response includes raw observed weather evidence used for the haza
 
 
 The current demonstration score adjustment is deliberately small and symmetric: `adjustment = clamp(round((risk_indicator - 50) * 0.5), -25, 25)` and `adjusted_score = baseline - adjustment`. OpenAI explains the returned evidence but does not determine or change the score.
+
+
+## Data quality and plain-language evidence
+
+Before interpreting the score, the engine performs basic checks on business coordinates, business verification status, supplier verification status, and supported weather measurements. Weather values outside broad expected ranges or missing required values are excluded from numeric scoring and surfaced as data-quality issues. The API labels the result provisional when climate evidence or valid coordinates are missing. This is a basic validation layer, not a full statistical or geospatial validation.
+
+The evidence response now contains short labels, observed values, source, period, and a plain-language explanation instead of requiring the frontend to show raw JSON. The OpenAI explainer is instructed to review data-quality checks first, then explain the possible business disruption in simple language using only the supplied observations. OpenAI does not calculate or alter the score; a rule-based explanation is used if the API is not configured or fails.
