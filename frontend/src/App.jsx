@@ -211,7 +211,10 @@ export default function App() {
           {item.data_period && <small><b>Period:</b> {item.data_period.start || "unknown"} to {item.data_period.end || "unknown"}</small>}
           {item.source && <small><b>Source:</b> {item.source}</small>}
           {item.source_url && <small><a href={item.source_url} target="_blank" rel="noreferrer">View data source</a></small>}
-          <small>Prototype signal: {item.prototype_signal_score}/100. This is a simple proxy, not a damage probability.</small>
+          {item.material_relevance_reason && <small><b>Material-hazard link:</b> {item.material_relevance_reason}</small>}
+          {item.material_relevance_weight != null && <small><b>Relevance weight:</b> {item.material_relevance_weight}</small>}
+          {item.included_in_score != null && <small><b>Score impact:</b> {item.included_in_score ? "Included because the material-hazard relationship matched" : "Context only — excluded because no configured material-hazard relationship matched"}</small>}
+          {item.prototype_signal_score != null && <small>Prototype signal: {item.prototype_signal_score}/100. This is a simple proxy, not a damage probability.</small>}
         </div>)}
       </div>}
       {(report.warnings || []).length > 0 && <div className="result-warnings"><strong>Data warnings</strong><ul>{report.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
