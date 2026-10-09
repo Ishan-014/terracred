@@ -45,6 +45,7 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
             for name, value in dimensions.items()
         },
         "observed_hazard_evidence": result.get("evidence_items", []),
+        "supplier_context": result.get("supplier_context", []),
         "missing_inputs": result.get("missing_inputs", []),
         "warnings": result.get("warnings", []),
         "baseline_score": baseline,
@@ -67,8 +68,16 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
             f"{name.replace('_', ' ').title()} score is {value['score']}/100."
             for name, value in dimensions.items()
             if value.get("score") is not None and float(value["score"]) >= 35
+        ] + [
+            item.get("plain_explanation", "Supplier rainfall may disrupt critical material supply.")
+            for item in result.get("evidence_items", [])
+            if item.get("label") == "Supplier rainfall exposure"
         ],
-        "business_problem": "No validated business-specific problem can be confirmed until the data quality checks and available evidence are reviewed.",
+        "business_problem": (
+            next((item.get("plain_explanation") for item in result.get("evidence_items", [])
+                  if item.get("label") == "Supplier rainfall exposure"), None)
+            or "No validated business-specific problem can be confirmed until the data quality checks and available evidence are reviewed."
+        ),
         "data_quality_issues": [
             item.get("detail", item.get("check", "Data quality issue"))
             for item in result.get("data_quality", {}).get("checks", [])
@@ -93,12 +102,18 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
                         "You are TerraCred's plain-language business climate-risk explainer. FIRST inspect data_quality and its checks. "
                         "If any checks failed or warnings exist, clearly say what information is missing, invalid, or unverified before discussing risk. "
                         "Then explain in simple non-technical language what could disrupt this business, which exact observations support that concern, "
-                        "and what evidence is not available. Do not call weather data a flood or damage proof. "
+                        "and what evidence is not available. For a furniture maker buying wood from a supplier with high observed rainfall, explain the plausible chain: "
+                        "heavy rain or wet storage can make timber harder to dry and keep dry; high wood moisture can encourage mould/fungal decay and cause swelling, warping, "
+                        "or cracking; rain can also disrupt roads, timber handling, and deliveries, delaying furniture production. Present these as possible mechanisms, "
+                        "not confirmed damage. Say that rainfall alone does not prove the wood got wet, the supplier was flooded, or deliveries were disrupted; those need "
+                        "storage, humidity/moisture, flood, transport, or supplier records. Use the supplied material and location evidence; do not assume the business sells furniture "
+                        "unless the input supports it. Do not call weather data a flood or damage proof. "
                         "Never invent facts, sources, readings, causes, financial history, or recommendations unsupported by the input. "
                         "Missing evidence means unknown, not safe. Do not calculate or change the score. "
                         "Return JSON with keys: summary (2-4 simple sentences), business_problem (one plain-language sentence), "
                         "positive_factors (array of short simple strings), risk_factors (array of short simple strings), "
                         "data_quality_issues (array of short strings), evidence_limitations (array of short strings). "
+                        "When supplier rainfall evidence and wood/timber material are present, explicitly connect the observed rainfall to the plausible wood and delivery impacts in plain language. "
                         "Mention the score adjustment is only a demo heuristic, not a validated credit model."
                     )},
                     {"role": "user", "content": json.dumps(evidence, ensure_ascii=False)},
@@ -155,6 +170,125 @@ def assess_climate_risk(business_id: str, payload: ClimateRiskRequest):
     )
     if hazard_warning:
         result["warnings"].append(hazard_warning)
+
+    # Retrieve rainfall evidence at each supplier's location separately from the MSME's location.
+    # This avoids incorrectly treating the business address as the supplier's climate exposure.
+    supplier_context = []
+    supplier_rain_signals = []
+    for supplier in suppliers:
+        supplier_data = supplier.model_dump(mode="json")
+        supplier_location = supplier_data.get("supplier_location") or {}
+        material = (supplier_data.get("material_supplied") or "").strip()
+        context = {
+            "supplier_name": supplier_data.get("supplier_name") or "Unnamed supplier",
+            "material_supplied": material or "Not specified",
+            "procurement_share_pct": supplier_data.get("procurement_share"),
+            "critical_to_operations": supplier_data.get("critical_to_operations"),
+            "alternative_supplier_available": supplier_data.get("alternative_supplier_available"),
+            "location": supplier_location.get("place_name") or supplier_location.get("admin_area"),
+            "location_verification": supplier_location.get("verification_status", "unknown"),
+            "rainfall_evidence_status": "not_assessed",
+        }
+        lat, lon = supplier_location.get("latitude"), supplier_location.get("longitude")
+        if lat is not None and lon is not None:
+            try:
+                supplier_request = HazardAssessmentRequest(
+                    location=LocationInput(
+                        latitude=lat, longitude=lon,
+                        place_name=supplier_location.get("place_name"),
+                        admin_area=supplier_location.get("admin_area"),
+                    ),
+                    hazard_types=["precipitation_extremes"],
+                    years=payload.years,
+                    include_unavailable=True,
+                )
+                supplier_assessment = build_hazard_assessment(supplier_request)
+                rain_row = next(
+                    (h.model_dump(mode="json") for h in supplier_assessment.hazards
+                     if h.hazard_type == "precipitation_extremes"),
+                    None,
+                )
+                if rain_row and rain_row.get("status") == "available":
+                    rain_data = rain_row.get("evidence") or {}
+                    rain_mm = rain_data.get("max_daily_precipitation_mm")
+                    if isinstance(rain_mm, (int, float)) and not isinstance(rain_mm, bool) and 0 <= rain_mm <= 2000:
+                        signal = round(min(100.0, float(rain_mm)), 2)
+                        supplier_rain_signals.append(signal)
+                        context["rainfall_evidence_status"] = "available"
+                        context["max_daily_rainfall_mm"] = round(float(rain_mm), 2)
+                        context["data_period"] = rain_row.get("data_period")
+                        context["source"] = rain_row.get("source")
+                        context["source_url"] = rain_row.get("source_url")
+                        material_lower = material.lower()
+                        wood_related = any(term in material_lower for term in ("wood", "timber", "lumber", "plywood", "veneer"))
+                        if wood_related:
+                            explanation = (
+                                f"The supplier's weather data records a maximum daily rainfall of {rain_mm} mm "
+                                f"at {context['location'] or 'the entered supplier location'}. Because this supplier provides {material}, "
+                                "heavy rain can make timber storage, drying, and transport harder to manage. If wood stays damp, "
+                                "it may develop mould or fungal decay, swell, warp, or crack; rain-related road or handling disruption "
+                                "can also delay deliveries and interrupt furniture production. These are plausible risks, not proof that "
+                                "this supplier's wood was wet, damaged, flooded, or delivered late."
+                            )
+                        else:
+                            explanation = (
+                                f"The supplier's weather data records a maximum daily rainfall of {rain_mm} mm at "
+                                f"{context['location'] or 'the entered supplier location'}. Rain may disrupt this supplier's "
+                                f"handling or transport of {material or 'the supplied material'}, but the available rainfall record "
+                                "does not prove actual damage or a delivery delay."
+                            )
+                        result["evidence_items"].append({
+                            "dimension": "supplier_climate_exposure",
+                            "hazard_type": "precipitation_extremes",
+                            "label": "Supplier rainfall exposure",
+                            "observed_value": round(float(rain_mm), 2),
+                            "unit": "mm in one day",
+                            "plain_explanation": explanation,
+                            "source": rain_row.get("source"),
+                            "source_url": rain_row.get("source_url"),
+                            "data_period": rain_row.get("data_period"),
+                            "prototype_signal_score": signal,
+                            "limitations": [
+                                "Rainfall at the supplier location is not proof of flooding, timber moisture, mould, damage, or a delivery delay.",
+                                "Wood condition, covered storage, kiln drying, road access, and supplier continuity records were not measured.",
+                            ],
+                        })
+                else:
+                    context["rainfall_evidence_status"] = "unavailable"
+            except Exception as exc:
+                context["rainfall_evidence_status"] = "unavailable"
+                context["rainfall_error"] = type(exc).__name__
+        else:
+            context["rainfall_evidence_status"] = "missing_supplier_coordinates"
+        supplier_context.append(context)
+
+    result["supplier_context"] = supplier_context
+    if supplier_rain_signals:
+        supplier_climate_score = round(sum(supplier_rain_signals) / len(supplier_rain_signals), 2)
+        result["dimensions"]["supplier_climate_exposure"] = {
+            "score": supplier_climate_score,
+            "status": "available",
+            "signals_used": len(supplier_rain_signals),
+            "explanation": (
+                "Mean of maximum daily rainfall observations at supplier locations. This is an illustrative exposure proxy, "
+                "not a flood probability, timber moisture measurement, or confirmed supply disruption."
+            ),
+        }
+        base_dimensions = [
+            value["score"] for name, value in result["dimensions"].items()
+            if name in {"hazard_evidence", "operational_vulnerability", "supplier_dependency"}
+            and value.get("score") is not None
+        ]
+        result["experimental_climate_risk_indicator"] = round(
+            sum(base_dimensions + [supplier_climate_score]) / (len(base_dimensions) + 1), 2
+        )
+        result["warnings"].append(
+            "Supplier rainfall exposure is included as an illustrative proxy only; it is not evidence of actual timber damage or delivery loss."
+        )
+    elif suppliers:
+        result["warnings"].append(
+            "Supplier-specific rainfall was not scored because supplier coordinates or valid rainfall observations were unavailable; missing data is not treated as safe."
+        )
 
     # Demo-only translation of the climate indicator into a familiar 300–900 score range.
     # The baseline is an assumed demo input, not extracted from a Udyam certificate.
