@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+from typing import Any
+
+MODEL_VERSION = "terracred-prototype-0.1"
+METHODOLOGY = (
+    "Experimental, rule-based prototype for demonstration only. Thresholds and equal "
+    "dimension weighting are illustrative, not calibrated or scientifically validated. "
+    "The result is not a conventional credit score or a lending recommendation."
+)
+
+
+def _mean(values: list[float]) -> float | None:
+    return round(sum(values) / len(values), 2) if values else None
+
+
+def _clamp_percent(value: float) -> float:
+    return round(max(0.0, min(100.0, value)), 2)
+
+
+def calculate_climate_risk(
+    business: dict[str, Any],
+    suppliers: list[dict[str, Any]],
+    vulnerability: dict[str, Any] | None,
+    hazards: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build an explainable prototype indicator from existing evidence.
+
+    Unknown or unsupported evidence is omitted from numeric calculations and reported.
+    Weather-derived values are not interpreted as flood/property damage evidence.
+    """
+    warnings: list[str] = []
+    missing: list[str] = []
+    dimensions: dict[str, dict[str, Any]] = {}
+
+    # Hazard dimension: only connected, available weather indicators contribute.
+    hazard_signals: list[float] = []
+    hazard_sources: list[dict[str, Any]] = []
+    for hazard in hazards:
+        if hazard.get("status") != "available":
+            warnings.append(
+                f"{hazard.get('hazard_type', 'hazard')}: evidence status is "
+                f"{hazard.get('status', 'unknown')}; not scored."
+            )
+            continue
+        evidence = hazard.get("evidence") or {}
+        kind = hazard.get("hazard_type")
+        signal = None
+        if kind == "precipitation_extremes":
+            value = evidence.get("max_daily_precipitation_mm")
+            if value is not None:
+                # Illustrative scale only: 100 mm/day maps to the cap.
+                signal = _clamp_percent(float(value))
+        elif kind == "temperature_extremes":
+            hot_days = evidence.get("hot_days_above_35c")
+            observed = evidence.get("days_with_observations")
+            if hot_days is not None and observed:
+                signal = _clamp_percent(float(hot_days) / float(observed) * 100)
+        elif kind == "wind_extremes":
+            value = evidence.get("max_daily_wind_speed_kmh")
+            if value is not None:
+                # Illustrative scale only: 100 km/h maps to the cap.
+                signal = _clamp_percent(float(value))
+        if signal is not None:
+            hazard_signals.append(signal)
+            hazard_sources.append({
+                "hazard_type": kind,
+                "source": hazard.get("source"),
+                "source_url": hazard.get("source_url"),
+                "data_period": hazard.get("data_period"),
+                "units": hazard.get("units"),
+                "matching_method": hazard.get("matching_method"),
+            })
+    hazard_score = _mean(hazard_signals)
+    dimensions["hazard_evidence"] = {
+        "score": hazard_score,
+        "status": "available" if hazard_score is not None else "insufficient_evidence",
+        "signals_used": len(hazard_signals),
+        "explanation": (
+            "Mean of available weather-derived prototype signals; this is not a flood map "
+            "or property-damage probability."
+            if hazard_score is not None else
+            "No supported, available weather indicators could be scored."
+        ),
+        "sources": hazard_sources,
+    }
+    if hazard_score is None:
+        missing.append("No supported hazard evidence was available for numeric scoring.")
+
+    # Operational vulnerability: score only known answers, with transparent ratios.
+    vulnerability_signals: list[float] = []
+    if vulnerability:
+        operations = vulnerability.get("critical_operations") or []
+        inputs = vulnerability.get("critical_inputs") or []
+        known_fallback = [x for x in operations if x.get("fallback_available") is not None]
+        if known_fallback:
+            vulnerability_signals.append(
+                sum(1 for x in known_fallback if x.get("fallback_available") is False)
+                / len(known_fallback) * 100
+            )
+        known_substitute = [x for x in inputs if x.get("substitute_available") is not None]
+        if known_substitute:
+            vulnerability_signals.append(
+                sum(1 for x in known_substitute if x.get("substitute_available") is False)
+                / len(known_substitute) * 100
+            )
+        if not operations:
+            missing.append("No critical operations are documented.")
+        if not inputs:
+            missing.append("No critical inputs are documented.")
+    else:
+        missing.append("No operational vulnerability record exists.")
+    vulnerability_score = _mean(vulnerability_signals)
+    dimensions["operational_vulnerability"] = {
+        "score": vulnerability_score,
+        "status": "available" if vulnerability_score is not None else "insufficient_evidence",
+        "signals_used": len(vulnerability_signals),
+        "explanation": (
+            "Share of documented operations without fallback and critical inputs without substitutes."
+            if vulnerability_score is not None else
+            "Not enough known fallback/substitution answers to calculate this dimension."
+        ),
+    }
+
+    # Supplier dependency: use known procurement shares and known lack of alternatives.
+    supplier_signals: list[float] = []
+    known_shares = [
+        float(s["procurement_share"]) for s in suppliers
+        if isinstance(s.get("procurement_share"), (int, float))
+        and 0 <= float(s["procurement_share"]) <= 100
+    ]
+    if known_shares:
+        supplier_signals.append(max(known_shares))
+    known_critical = [
+        s for s in suppliers
+        if s.get("critical_to_operations") is True
+        and s.get("alternative_supplier_available") is not None
+    ]
+    if known_critical:
+        supplier_signals.append(
+            sum(1 for s in known_critical if s.get("alternative_supplier_available") is False)
+            / len(known_critical) * 100
+        )
+    supplier_score = _mean(supplier_signals)
+    dimensions["supplier_dependency"] = {
+        "score": supplier_score,
+        "status": "available" if supplier_score is not None else "insufficient_evidence",
+        "signals_used": len(supplier_signals),
+        "supplier_count": len(suppliers),
+        "unverified_or_unknown_suppliers": sum(
+            1 for s in suppliers if s.get("verification_status") != "verified"
+        ),
+        "explanation": (
+            "Mean of the largest recorded procurement share and the known share of critical "
+            "suppliers without alternatives. This does not establish a supplier's climate exposure."
+            if supplier_score is not None else
+            "Supplier concentration or alternative-supplier evidence is not sufficiently documented."
+        ),
+    }
+    if not suppliers:
+        missing.append("No supplier relationships are recorded.")
+    elif any(s.get("verification_status") != "verified" for s in suppliers):
+        warnings.append("Some supplier relationships are unverified or have unknown verification status.")
+
+    # Evidence quality is reported separately and is not treated as a risk score.
+    verification_values = []
+    business_verification = business.get("verification_status")
+    if business_verification is not None:
+        verification_values.append(1.0 if business_verification == "verified" else 0.0)
+    location = business.get("business_location") or {}
+    if location:
+        verification_values.append(1.0 if location.get("verification_status") == "verified" else 0.0)
+    for supplier in suppliers:
+        verification_values.append(1.0 if supplier.get("verification_status") == "verified" else 0.0)
+    data_quality_pct = round(sum(verification_values) / len(verification_values) * 100, 2) if verification_values else None
+    dimensions["evidence_quality"] = {
+        "score": None,
+        "verification_coverage_pct": data_quality_pct,
+        "status": "available" if data_quality_pct is not None else "insufficient_evidence",
+        "explanation": "Verification coverage is a data-quality indicator, not a risk score.",
+    }
+
+    available_scores = [
+        item["score"] for key, item in dimensions.items()
+        if key in {"hazard_evidence", "operational_vulnerability", "supplier_dependency"}
+        and item.get("score") is not None
+    ]
+    overall_score = _mean(available_scores)
+    overall_status = "experimental_indicator" if overall_score is not None else "insufficient_evidence"
+    if overall_score is not None and len(available_scores) < 3:
+        warnings.append("Overall indicator uses only available dimensions; missing dimensions were not assumed safe.")
+    warnings.append("Prototype weights and thresholds are illustrative and have not been scientifically validated.")
+    warnings.append("Climate-risk output must not replace conventional credit assessment or automatically decide lending.")
+
+    return {
+        "business_id": business.get("business_id"),
+        "business_name": business.get("business_name"),
+        "model_version": MODEL_VERSION,
+        "methodology": METHODOLOGY,
+        "status": overall_status,
+        "experimental_climate_risk_indicator": overall_score,
+        "dimensions": dimensions,
+        "missing_inputs": sorted(set(missing)),
+        "warnings": warnings,
+        "conventional_credit_score": None,
+        "lending_decision": None,
+    }
