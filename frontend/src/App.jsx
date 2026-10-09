@@ -46,8 +46,16 @@ export default function App() {
       body.append("file", file);
       const result = await call("/api/udyam/upload", { method: "POST", body });
       setUpload(result);
+      const fields = result.extracted_fields || {};
+      setForm((old) => ({
+        ...old,
+        business_name: fields.business_name || old.business_name,
+        industry: fields.industry === "Manufacturing" || fields.industry === "Services"
+          ? fields.industry : old.industry,
+        place_name: fields.business_address || old.place_name
+      }));
       setStep(2);
-      setMessage("Certificate uploaded. Enter the supplier details to continue.");
+      setMessage(result.message || "Certificate uploaded. Review the extracted details before continuing.");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
@@ -121,16 +129,17 @@ export default function App() {
     {step === 1 && <section className="simple-card">
       <div className="simple-card-heading"><div className="card-icon"><FileUp size={20}/></div><div><h2>Upload Udyam certificate</h2><p>Start with the business registration certificate.</p></div></div>
       <label className="upload-zone"><input type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(e) => { setFile(e.target.files?.[0] || null); setError(""); }}/><span className="upload-icon"><UploadCloud size={24}/></span><strong>{file ? file.name : "Choose certificate to upload"}</strong><small>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB · Ready to upload` : "PDF, PNG or JPG · Max 10 MB"}</small></label>
-      <div className="privacy-note">The file is stored locally by the prototype. Certificate text is not automatically extracted or verified, so business details are entered in the next step.</div>
+      <div className="privacy-note">TerraCred reads text from the PDF or uses OCR for scanned PDFs and images. Extracted fields are suggestions and must be reviewed; the certificate is not officially verified.</div>
       <button className="simple-button" disabled={busy || !file} onClick={uploadCertificate}>{busy ? <><LoaderCircle className="spin" size={17}/> Uploading…</> : <>Upload and continue <ArrowRight size={17}/></>}</button>
     </section>}
 
     {step === 2 && <section className="simple-card">
       <div className="upload-confirm"><CheckCircle2 size={18}/><span><strong>Certificate uploaded</strong><small>{upload?.filename}</small></span><button className="link-button" onClick={() => { setStep(1); setReport(null); }}>Change</button></div>
-      <div className="simple-card-heading"><div className="card-icon"><Leaf size={20}/></div><div><h2>Business & supplier details</h2><p>Only the information required for this demonstration.</p></div></div>
+      <div className="simple-card-heading"><div className="card-icon"><Leaf size={20}/></div><div><h2>Review business & add supplier</h2><p>Business fields are prefilled from the Udyam certificate when detected.</p></div></div>
+      <div className="privacy-note">{upload?.extraction_status === "completed" ? `OCR/text extraction: ${upload.extraction_method || "completed"}. Please correct any mistakes below.` : `Extraction status: ${upload?.extraction_status || "unknown"}. ${upload?.message || "Please enter any missing business details manually."}`}</div>
       <div className="simple-form">
         <Field label="Business name"><input value={form.business_name} onChange={(e) => change("business_name", e.target.value)} placeholder="As shown on Udyam certificate"/></Field>
-        <Field label="Industry"><select value={form.industry} onChange={(e) => change("industry", e.target.value)}>{["Manufacturing","Food processing","Agriculture","Retail","Textiles","Logistics","Construction","Hospitality","Other"].map((x) => <option key={x}>{x}</option>)}</select></Field>
+        <Field label="Industry"><select value={form.industry} onChange={(e) => change("industry", e.target.value)}>{["Manufacturing","Services","Food processing","Agriculture","Retail","Textiles","Logistics","Construction","Hospitality","Other"].map((x) => <option key={x}>{x}</option>)}</select></Field>
         <Field label="Business location" hint="City or district"><input value={form.place_name} onChange={(e) => change("place_name", e.target.value)} placeholder="e.g. Pune, Maharashtra"/></Field>
         <div className="two-fields"><Field label="Latitude"><input type="number" step="any" value={form.latitude} onChange={(e) => change("latitude", e.target.value)} placeholder="18.5204"/></Field><Field label="Longitude"><input type="number" step="any" value={form.longitude} onChange={(e) => change("longitude", e.target.value)} placeholder="73.8567"/></Field></div>
         <div className="form-divider"/>
@@ -157,7 +166,7 @@ export default function App() {
       <div className="result-explanation"><strong>How the score changed</strong><p>{report.credit_score_methodology}</p><p>The climate indicator is returned by the TerraCred backend scoring engine. Higher indicator values produce a larger score reduction in this demo. The starting score is fixed at 750 for demonstration because Udyam does not contain a credit score.</p></div>
       {(report.warnings || []).length > 0 && <div className="result-warnings"><strong>Data warnings</strong><ul>{report.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
       <div className="result-actions"><button className="simple-button secondary-button" onClick={() => { setStep(2); setReport(null); setMessage(""); setError(""); }}>Edit details</button><button className="simple-button" onClick={() => {setStep(1);setFile(null);setUpload(null);setReport(null);setForm(initial);setMessage("");setError("");}}>New assessment</button></div>
-      <p className="disclaimer">Hackathon demonstration only. The baseline and score-band mapping are illustrative, not a validated lending score. Udyam upload is not OCR-verified. Do not use this output to approve or reject credit.</p>
+      <p className="disclaimer">Hackathon demonstration only. The baseline and score-band mapping are illustrative, not a validated lending score. OCR-extracted details may be inaccurate and are not officially verified. Do not use this output to approve or reject credit.</p>
     </section>}
 
     <footer className="simple-footer">TerraCred <span>·</span> Explainable climate-risk scoring prototype</footer>
