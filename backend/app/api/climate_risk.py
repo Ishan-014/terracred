@@ -33,6 +33,28 @@ class ClimateRiskRequest(BaseModel):
 
 
 
+
+def _rainfall_material_relevance(material: str) -> tuple[float, str]:
+    """Illustrative relevance weights for rainfall-to-input disruption pathways."""
+    text = (material or "").lower()
+    groups = (
+        (1.0, ("wood", "timber", "lumber", "plywood", "veneer"),
+         "High relevance: wet exposure can affect wood moisture/quality and timber delivery."),
+        (0.8, ("paper", "cardboard", "packaging", "cotton", "textile", "fabric"),
+         "Moderate-high relevance: moisture can damage stock or disrupt handling and transport."),
+        (0.7, ("grain", "crop", "agricultural produce", "seeds", "fertilizer"),
+         "Moderate-high relevance: rainfall can affect exposed agricultural inputs, storage, or transport."),
+        (0.6, ("cement", "sand", "aggregate", "steel", "bricks", "construction material"),
+         "Moderate relevance: rain can affect storage, site handling, and delivery logistics."),
+        (0.5, ("food", "perishable", "dairy", "medicine", "pharma"),
+         "Possible relevance through storage or transport disruption; product-specific exposure is not measured."),
+    )
+    for weight, terms, reason in groups:
+        if any(term in text for term in terms):
+            return weight, reason
+    return 0.0, "No configured rainfall-to-material pathway matched this input, so rainfall is shown as context but excluded from the score."
+
+
 def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None, adjusted: int | None) -> dict:
     """Explain only structured evidence; fall back to deterministic text if OpenAI is unavailable."""
     dimensions = result.get("dimensions", {})
@@ -213,14 +235,18 @@ def assess_climate_risk(business_id: str, payload: ClimateRiskRequest):
                     rain_mm = rain_data.get("max_daily_precipitation_mm")
                     if isinstance(rain_mm, (int, float)) and not isinstance(rain_mm, bool) and 0 <= rain_mm <= 2000:
                         signal = round(min(100.0, float(rain_mm)), 2)
-                        supplier_rain_signals.append(signal)
+                        relevance_weight, relevance_reason = _rainfall_material_relevance(material)
                         context["rainfall_evidence_status"] = "available"
+                        context["rainfall_material_relevance"] = relevance_weight
+                        context["rainfall_relevance_reason"] = relevance_reason
                         context["max_daily_rainfall_mm"] = round(float(rain_mm), 2)
                         context["data_period"] = rain_row.get("data_period")
                         context["source"] = rain_row.get("source")
                         context["source_url"] = rain_row.get("source_url")
-                        material_lower = material.lower()
-                        wood_related = any(term in material_lower for term in ("wood", "timber", "lumber", "plywood", "veneer"))
+                        wood_related = any(term in material.lower() for term in ("wood", "timber", "lumber", "plywood", "veneer"))
+                        if relevance_weight > 0:
+                            # Relevance-weighted signal: irrelevant rainfall cannot lower/raise this score.
+                            supplier_rain_signals.append(round(signal * relevance_weight, 2))
                         if wood_related:
                             explanation = (
                                 f"The supplier's weather data records a maximum daily rainfall of {rain_mm} mm "
@@ -244,11 +270,14 @@ def assess_climate_risk(business_id: str, payload: ClimateRiskRequest):
                             "label": "Supplier rainfall exposure",
                             "observed_value": round(float(rain_mm), 2),
                             "unit": "mm in one day",
-                            "plain_explanation": explanation,
+                            "plain_explanation": explanation if relevance_weight > 0 else f"{explanation} Scoring decision: {relevance_reason}",
+                            "material_relevance_weight": relevance_weight,
+                            "material_relevance_reason": relevance_reason,
+                            "included_in_score": relevance_weight > 0,
                             "source": rain_row.get("source"),
                             "source_url": rain_row.get("source_url"),
                             "data_period": rain_row.get("data_period"),
-                            "prototype_signal_score": signal,
+                            "prototype_signal_score": round(signal * relevance_weight, 2) if relevance_weight > 0 else None,
                             "limitations": [
                                 "Rainfall at the supplier location is not proof of flooding, timber moisture, mould, damage, or a delivery delay.",
                                 "Wood condition, covered storage, kiln drying, road access, and supplier continuity records were not measured.",
@@ -271,8 +300,9 @@ def assess_climate_risk(business_id: str, payload: ClimateRiskRequest):
             "status": "available",
             "signals_used": len(supplier_rain_signals),
             "explanation": (
-                "Mean of maximum daily rainfall observations at supplier locations. This is an illustrative exposure proxy, "
-                "not a flood probability, timber moisture measurement, or confirmed supply disruption."
+                "Mean of rainfall signals multiplied by a configured material-relevance weight. "
+                "Rainfall with no mapped relationship to the supplied material is excluded. "
+                "This is an illustrative exposure proxy, not a flood probability, material-damage measurement, or confirmed supply disruption."
             ),
         }
         base_dimensions = [
@@ -287,9 +317,14 @@ def assess_climate_risk(business_id: str, payload: ClimateRiskRequest):
             "Supplier rainfall exposure is included as an illustrative proxy only; it is not evidence of actual timber damage or delivery loss."
         )
     elif suppliers:
-        result["warnings"].append(
-            "Supplier-specific rainfall was not scored because supplier coordinates or valid rainfall observations were unavailable; missing data is not treated as safe."
-        )
+        if any(item.get("rainfall_evidence_status") == "available" for item in supplier_context):
+            result["warnings"].append(
+                "Supplier rainfall was retrieved but not scored because no configured material-relevance relationship matched the supplied materials; it remains contextual evidence, not a zero-risk signal."
+            )
+        else:
+            result["warnings"].append(
+                "Supplier-specific rainfall was not scored because supplier coordinates or valid rainfall observations were unavailable; missing data is not treated as safe."
+            )
 
     # Demo-only translation of the climate indicator into a familiar 300–900 score range.
     # The baseline is an assumed demo input, not extracted from a Udyam certificate.
