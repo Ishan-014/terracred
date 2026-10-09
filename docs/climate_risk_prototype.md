@@ -36,8 +36,13 @@ The streamlined frontend starts with a Udyam certificate upload, then collects a
 
 For the visual demonstration, the API accepts an assumed baseline score in the 300–900 range (default 750). If the existing climate-risk engine returns a numeric indicator, the demo applies:
 
-- Climate penalty = rounded climate-risk indicator × 3 points.
+- Climate penalty = rounded climate-risk indicator × 0.5 points, capped at 40 points.
 - Climate-adjusted score = baseline score − climate penalty, bounded to 300–900.
 - Display bands: 300–549 Poor, 550–649 Fair, 650–749 Good, and 750–900 Excellent.
 
 This is an illustrative presentation mapping, not an established MSME credit-risk formula or validated credit score. A Udyam certificate does not itself provide the baseline credit score. The score must not be used to make real lending decisions. For a production system, the climate adjustment would need a justified, calibrated methodology and independently sourced conventional credit data.
+
+
+## Evidence explanation layer
+
+The assessment response includes raw observed weather evidence used for the hazard signals, source metadata, risk dimensions, missing inputs, and warnings. If `OPENAI_API_KEY` is configured, the backend sends this structured evidence to the OpenAI Chat Completions API (default model `gpt-4o-mini`) to produce a plain-language summary, risk factors, lower-risk signals, and evidence limitations. The model is instructed not to invent evidence; if the API key is absent or the request fails, a deterministic rule-based explanation is returned instead. Configure `OPENAI_API_KEY` in the repository-root `.env` file; never expose this key in frontend code. OpenAI explains the engine's result and does not calculate or alter the score.
