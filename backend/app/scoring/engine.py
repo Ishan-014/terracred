@@ -36,6 +36,7 @@ def calculate_climate_risk(
     # Hazard dimension: only connected, available weather indicators contribute.
     hazard_signals: list[float] = []
     hazard_sources: list[dict[str, Any]] = []
+    evidence_items: list[dict[str, Any]] = []
     for hazard in hazards:
         if hazard.get("status") != "available":
             warnings.append(
@@ -63,6 +64,14 @@ def calculate_climate_risk(
                 signal = _clamp_percent(float(value))
         if signal is not None:
             hazard_signals.append(signal)
+            evidence_items.append({
+                "dimension": "hazard_evidence",
+                "hazard_type": kind,
+                "observed_evidence": evidence,
+                "prototype_signal_score": signal,
+                "interpretation": hazard.get("interpretation"),
+                "limitations": hazard.get("limitations", []),
+            })
             hazard_sources.append({
                 "hazard_type": kind,
                 "source": hazard.get("source"),
@@ -200,6 +209,7 @@ def calculate_climate_risk(
         "status": overall_status,
         "experimental_climate_risk_indicator": overall_score,
         "dimensions": dimensions,
+        "evidence_items": evidence_items,
         "missing_inputs": sorted(set(missing)),
         "warnings": warnings,
         "conventional_credit_score": None,
