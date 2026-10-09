@@ -37,6 +37,7 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
     """Explain only structured evidence; fall back to deterministic text if OpenAI is unavailable."""
     dimensions = result.get("dimensions", {})
     evidence = {
+        "data_quality": result.get("data_quality", {}),
         "risk_indicator": result.get("experimental_climate_risk_indicator"),
         "dimensions": {
             name: {"score": value.get("score"), "status": value.get("status"),
@@ -52,7 +53,8 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
     }
     fallback = {
         "summary": (
-            f"The illustrative climate indicator is {evidence['risk_indicator']}/100. "
+            f"{result.get('data_quality', {}).get('summary', 'Data quality was not assessed.')} "
+            f"The climate indicator is {evidence['risk_indicator']}/100. "
             f"The demo applies an adjustment of {penalty:+d} points to baseline {baseline}, resulting in {adjusted}."
             if adjusted is not None else "There is not enough scored evidence to calculate an adjusted score."
         ),
@@ -65,6 +67,12 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
             f"{name.replace('_', ' ').title()} score is {value['score']}/100."
             for name, value in dimensions.items()
             if value.get("score") is not None and float(value["score"]) >= 35
+        ],
+        "business_problem": "No validated business-specific problem can be confirmed until the data quality checks and available evidence are reviewed.",
+        "data_quality_issues": [
+            item.get("detail", item.get("check", "Data quality issue"))
+            for item in result.get("data_quality", {}).get("checks", [])
+            if item.get("status") != "passed"
         ],
         "evidence_limitations": list(result.get("missing_inputs", [])) + list(result.get("warnings", [])),
         "generated_by": "rule_based_fallback",
@@ -82,11 +90,16 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
                 "response_format": {"type": "json_object"},
                 "messages": [
                     {"role": "system", "content": (
-                        "You are TerraCred's evidence explainer. Explain only supplied structured evidence. "
-                        "Never invent facts, sources, weather readings, causes, or credit history. "
-                        "Distinguish measured evidence from illustrative prototype signals. Missing evidence is unknown, not safe. "
-                        "Return JSON with keys summary (string), positive_factors (array), risk_factors (array), "
-                        "evidence_limitations (array). State the adjustment is a demo heuristic, not a validated credit model."
+                        "You are TerraCred's plain-language business climate-risk explainer. FIRST inspect data_quality and its checks. "
+                        "If any checks failed or warnings exist, clearly say what information is missing, invalid, or unverified before discussing risk. "
+                        "Then explain in simple non-technical language what could disrupt this business, which exact observations support that concern, "
+                        "and what evidence is not available. Do not call weather data a flood or damage proof. "
+                        "Never invent facts, sources, readings, causes, financial history, or recommendations unsupported by the input. "
+                        "Missing evidence means unknown, not safe. Do not calculate or change the score. "
+                        "Return JSON with keys: summary (2-4 simple sentences), business_problem (one plain-language sentence), "
+                        "positive_factors (array of short simple strings), risk_factors (array of short simple strings), "
+                        "data_quality_issues (array of short strings), evidence_limitations (array of short strings). "
+                        "Mention the score adjustment is only a demo heuristic, not a validated credit model."
                     )},
                     {"role": "user", "content": json.dumps(evidence, ensure_ascii=False)},
                 ],
