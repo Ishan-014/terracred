@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 
 from backend.app.api.business import router as business_router
+from backend.app.api.climate_risk import router as climate_risk_router
 from backend.app.api.datasets import router as datasets_router
 from backend.app.api.hazards import router as hazards_router
 from backend.app.api.weather import router as weather_router
@@ -21,6 +22,7 @@ app.include_router(weather_router)
 app.include_router(weather_features_router)
 app.include_router(hazards_router)
 app.include_router(business_router)
+app.include_router(climate_risk_router)
 
 
 @app.get("/")
