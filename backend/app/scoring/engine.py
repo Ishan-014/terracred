@@ -18,6 +18,43 @@ def _clamp_percent(value: float) -> float:
     return round(max(0.0, min(100.0, value)), 2)
 
 
+
+def _hazard_relevance(business: dict[str, Any], hazard_type: str) -> tuple[bool, str]:
+    """Use business activities/materials to avoid scoring weather hazards with no stated pathway."""
+    context = " ".join(str(value or "") for value in (
+        business.get("industry"),
+        business.get("business_activity"),
+        *(business.get("main_activities") or []),
+        *(business.get("critical_raw_materials") or []),
+    )).lower()
+
+    rules = {
+        "precipitation_extremes": {
+            "terms": ("wood", "timber", "lumber", "plywood", "veneer", "paper", "cardboard",
+                      "cotton", "textile", "fabric", "grain", "crop", "agricultur", "food",
+                      "construction", "cement", "sand", "aggregate", "logistics", "transport"),
+            "reason": "Rainfall has a plausible pathway through the stated materials or business activity (for example, moisture-sensitive stock, field exposure, or transport disruption).",
+        },
+        "temperature_extremes": {
+            "terms": ("food", "dairy", "perishable", "cold storage", "pharma", "medicine",
+                      "agricultur", "crop", "livestock", "chemical", "textile", "foundry",
+                      "metal", "electronics", "logistics", "transport"),
+            "reason": "Temperature extremes have a plausible pathway through the stated materials or business activity (for example, spoilage, heat stress, or temperature-sensitive handling).",
+        },
+        "wind_extremes": {
+            "terms": ("agricultur", "crop", "construction", "scaffold", "roofing", "outdoor",
+                      "logistics", "transport", "warehousing", "renewable", "solar", "wind turbine"),
+            "reason": "Wind has a plausible pathway through the stated materials or business activity (for example, outdoor exposure, structures, or transport disruption).",
+        },
+    }
+    rule = rules.get(hazard_type)
+    if rule is None:
+        return False, "No business/material relevance rule is configured for this hazard."
+    if any(term in context for term in rule["terms"]):
+        return True, rule["reason"]
+    return False, "No explicit business/material link is configured for this hazard, so it is excluded from the score rather than assumed to be harmless."
+
+
 def calculate_climate_risk(
     business: dict[str, Any],
     suppliers: list[dict[str, Any]],
@@ -67,6 +104,11 @@ def calculate_climate_risk(
     hazard_sources: list[dict[str, Any]] = []
     evidence_items: list[dict[str, Any]] = []
     for hazard in hazards:
+        kind = hazard.get("hazard_type")
+        relevant, relevance_reason = _hazard_relevance(business, kind)
+        if not relevant:
+            warnings.append(f"{kind or 'Hazard'}: not scored because no relevant business/material pathway was identified.")
+            continue
         if hazard.get("status") != "available":
             warnings.append(
                 f"{hazard.get('hazard_type', 'hazard')}: evidence status is "
@@ -74,7 +116,6 @@ def calculate_climate_risk(
             )
             continue
         evidence = hazard.get("evidence") or {}
-        kind = hazard.get("hazard_type")
         signal = None
         label = kind or "Weather evidence"
         observed_value = None
@@ -130,7 +171,8 @@ def calculate_climate_risk(
             "label": label,
             "observed_value": observed_value,
             "unit": unit,
-            "plain_explanation": plain_explanation,
+            "plain_explanation": f"{plain_explanation} Relevance: {relevance_reason}",
+            "relevance_reason": relevance_reason,
             "source": hazard.get("source"),
             "source_url": hazard.get("source_url"),
             "data_period": hazard.get("data_period"),
@@ -151,8 +193,8 @@ def calculate_climate_risk(
         "status": "available" if hazard_score is not None else "insufficient_evidence",
         "signals_used": len(hazard_signals),
         "explanation": (
-            "Mean of available weather-derived prototype signals; this is not a flood map "
-            "or property-damage probability."
+            "Mean of available weather-derived signals only after a business/material relevance rule matched; "
+            "this is not a flood map or property-damage probability."
             if hazard_score is not None else
             "No supported, available weather indicators could be scored."
         ),
