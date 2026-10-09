@@ -16,6 +16,7 @@ class ClimateRiskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     years: int = Field(default=10, ge=1, le=30)
+    baseline_credit_score: int = Field(default=750, ge=300, le=900)
     hazard_types: list[str] = Field(
         default_factory=lambda: [
             "precipitation_extremes",
@@ -66,4 +67,34 @@ def assess_climate_risk(business_id: str, payload: ClimateRiskRequest):
     )
     if hazard_warning:
         result["warnings"].append(hazard_warning)
+
+    # Demo-only translation of the climate indicator into a familiar 300–900 score range.
+    # The baseline is an assumed demo input, not extracted from a Udyam certificate.
+    climate_risk = result.get("experimental_climate_risk_indicator")
+    if climate_risk is None:
+        result["baseline_credit_score"] = payload.baseline_credit_score
+        result["climate_penalty_points"] = None
+        result["climate_adjusted_credit_score"] = None
+        result["credit_score_band"] = "Insufficient evidence"
+    else:
+        penalty = round(max(0.0, min(100.0, float(climate_risk))) * 3)
+        adjusted = max(300, min(900, payload.baseline_credit_score - penalty))
+        result["baseline_credit_score"] = payload.baseline_credit_score
+        result["climate_penalty_points"] = penalty
+        result["climate_adjusted_credit_score"] = adjusted
+        if adjusted < 550:
+            band = "Poor"
+        elif adjusted < 650:
+            band = "Fair"
+        elif adjusted < 750:
+            band = "Good"
+        else:
+            band = "Excellent"
+        result["credit_score_band"] = band
+    result["credit_score_methodology"] = (
+        "Demo-only mapping: climate penalty = rounded climate indicator × 3 points; "
+        "adjusted score = baseline score − penalty, bounded to 300–900. "
+        "The baseline score is assumed for demonstration and is not supplied by Udyam. "
+        "This range mapping is illustrative, not a validated lending model."
+    )
     return result
