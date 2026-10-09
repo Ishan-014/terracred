@@ -47,13 +47,13 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
         "missing_inputs": result.get("missing_inputs", []),
         "warnings": result.get("warnings", []),
         "baseline_score": baseline,
-        "penalty_points": penalty,
+        "adjustment_points": penalty,
         "adjusted_score": adjusted,
     }
     fallback = {
         "summary": (
             f"The illustrative climate indicator is {evidence['risk_indicator']}/100. "
-            f"The demo applies a {penalty}-point adjustment to baseline {baseline}, resulting in {adjusted}."
+            f"The demo applies an adjustment of {penalty:+d} points to baseline {baseline}, resulting in {adjusted}."
             if adjusted is not None else "There is not enough scored evidence to calculate an adjusted score."
         ),
         "positive_factors": [
@@ -152,10 +152,14 @@ def assess_climate_risk(business_id: str, payload: ClimateRiskRequest):
         result["climate_adjusted_credit_score"] = None
         result["credit_score_band"] = "Insufficient evidence"
     else:
-        penalty = min(40, round(max(0.0, min(100.0, float(climate_risk))) * 0.5))
-        adjusted = max(300, min(900, payload.baseline_credit_score - penalty))
+        # Small, symmetric demo adjustment around a neutral indicator of 50.
+        # Higher-than-neutral risk lowers the score; lower-than-neutral risk raises it.
+        adjustment = max(-25, min(25, round((float(climate_risk) - 50.0) * 0.5)))
+        adjusted = max(300, min(900, payload.baseline_credit_score - adjustment))
         result["baseline_credit_score"] = payload.baseline_credit_score
-        result["climate_penalty_points"] = penalty
+        result["climate_adjustment_points"] = adjustment
+        result["climate_penalty_points"] = max(0, adjustment)
+        result["climate_uplift_points"] = max(0, -adjustment)
         result["climate_adjusted_credit_score"] = adjusted
         if adjusted < 550:
             band = "Poor"
@@ -167,13 +171,14 @@ def assess_climate_risk(business_id: str, payload: ClimateRiskRequest):
             band = "Excellent"
         result["credit_score_band"] = band
     result["credit_score_methodology"] = (
-        "Demo-only mapping: climate penalty = rounded climate indicator × 0.5 points, capped at 40; "
-        "adjusted score = baseline score − penalty, bounded to 300–900. "
+        "Demo-only mapping: adjustment = rounded (climate indicator − 50) × 0.5, bounded to −25..+25; "
+        "adjusted score = baseline score − adjustment, bounded to 300–900. Indicators below 50 can raise the score; "
+        "indicators above 50 can lower it. "
         "The baseline score is assumed for demonstration and is not supplied by Udyam. "
         "This range mapping is illustrative, not a validated lending model."
     )
     result["evidence_explanation"] = _build_evidence_explanation(
         result, payload.baseline_credit_score,
-        result.get("climate_penalty_points"), result.get("climate_adjusted_credit_score"),
+        result.get("climate_adjustment_points"), result.get("climate_adjusted_credit_score"),
     )
     return result
