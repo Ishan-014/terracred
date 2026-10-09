@@ -7,7 +7,7 @@ const initial = {
   business_name: "", industry: "Manufacturing", place_name: "", latitude: "", longitude: "",
   supplier_name: "", material_supplied: "", procurement_share: "40",
   alternative_supplier_available: false, critical_to_operations: true,
-  fallback_available: false, baseline_credit_score: "750", verification_status: "unverified"
+  fallback_available: false, verification_status: "unverified"
 };
 const bandCopy = {
   Poor: "Higher climate-adjustment impact",
@@ -57,10 +57,9 @@ export default function App() {
     if (!form.business_name.trim() || !form.industry.trim()) { setError("Enter the business name and industry."); return; }
     if (form.latitude === "" || form.longitude === "") { setError("Enter the business latitude and longitude so the backend can retrieve location-based climate evidence."); return; }
     if (!form.supplier_name.trim()) { setError("Enter at least one supplier name."); return; }
-    const lat = Number(form.latitude), lon = Number(form.longitude), share = Number(form.procurement_share), base = Number(form.baseline_credit_score);
+    const lat = Number(form.latitude), lon = Number(form.longitude), share = Number(form.procurement_share), base = 750;
     if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lon) || lon < -180 || lon > 180) { setError("Enter valid latitude and longitude values."); return; }
     if (!Number.isFinite(share) || share < 0 || share > 100) { setError("Supplier purchase share must be between 0 and 100%."); return; }
-    if (!Number.isInteger(base) || base < 300 || base > 900) { setError("Demo starting score must be an integer from 300 to 900."); return; }
 
     setBusy(true); setError(""); setMessage(""); setReport(null);
     try {
@@ -109,7 +108,7 @@ export default function App() {
   }
 
   const score = report?.climate_adjusted_credit_score;
-  const baseline = report?.baseline_credit_score ?? Number(form.baseline_credit_score);
+  const baseline = report?.baseline_credit_score ?? 750;
   const risk = report?.experimental_climate_risk_indicator;
 
   return <main className="simple-app">
@@ -143,7 +142,6 @@ export default function App() {
         <Field label="Can you switch to an alternative supplier?"><select value={String(form.alternative_supplier_available)} onChange={(e) => change("alternative_supplier_available", e.target.value === "true")}><option value="false">No</option><option value="true">Yes</option></select></Field>
         <Field label="Can core operations continue during a disruption?"><select value={String(form.fallback_available)} onChange={(e) => change("fallback_available", e.target.value === "true")}><option value="false">No</option><option value="true">Yes</option></select></Field>
         <div className="form-divider"/>
-        <Field label="Starting score for demonstration" hint="Udyam certificates do not contain a credit score. This assumed baseline lets the demo show the climate adjustment."><input type="number" min="300" max="900" value={form.baseline_credit_score} onChange={(e) => change("baseline_credit_score", e.target.value)}/></Field>
       </div>
       <div className="button-row"><button className="simple-button secondary-button" onClick={() => setStep(1)}>Back</button><button className="simple-button" disabled={busy} onClick={generateScore}>{busy ? <><LoaderCircle className="spin" size={17}/> Calculating…</> : <>Generate climate-adjusted score <ArrowRight size={17}/></>}</button></div>
     </section>}
@@ -156,7 +154,7 @@ export default function App() {
         <div className="range-labels"><span>300 · Poor</span><span>550 · Fair</span><span>650 · Good</span><span>750 · Excellent</span><span>900</span></div>
         <div className="risk-summary"><div><small>CLIMATE RISK INDICATOR</small><strong>{risk ?? "—"}<span>/100</span></strong></div><div><small>CLIMATE PENALTY</small><strong>{report.climate_penalty_points ?? "—"}<span> points</span></strong></div></div>
       </>}
-      <div className="result-explanation"><strong>How the score changed</strong><p>{report.credit_score_methodology}</p><p>The climate indicator is returned by the TerraCred backend scoring engine. Higher indicator values produce a larger score reduction in this demo.</p></div>
+      <div className="result-explanation"><strong>How the score changed</strong><p>{report.credit_score_methodology}</p><p>The climate indicator is returned by the TerraCred backend scoring engine. Higher indicator values produce a larger score reduction in this demo. The starting score is fixed at 750 for demonstration because Udyam does not contain a credit score.</p></div>
       {(report.warnings || []).length > 0 && <div className="result-warnings"><strong>Data warnings</strong><ul>{report.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
       <div className="result-actions"><button className="simple-button secondary-button" onClick={() => { setStep(2); setReport(null); setMessage(""); setError(""); }}>Edit details</button><button className="simple-button" onClick={() => {setStep(1);setFile(null);setUpload(null);setReport(null);setForm(initial);setMessage("");setError("");}}>New assessment</button></div>
       <p className="disclaimer">Hackathon demonstration only. The baseline and score-band mapping are illustrative, not a validated lending score. Udyam upload is not OCR-verified. Do not use this output to approve or reject credit.</p>
