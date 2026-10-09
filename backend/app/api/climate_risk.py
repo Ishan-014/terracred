@@ -93,11 +93,11 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
         ] + [
             item.get("plain_explanation", "Supplier rainfall may disrupt critical material supply.")
             for item in result.get("evidence_items", [])
-            if item.get("label") == "Supplier rainfall exposure"
+            if item.get("label") == "Supplier rainfall exposure" and item.get("included_in_score", True)
         ],
         "business_problem": (
             next((item.get("plain_explanation") for item in result.get("evidence_items", [])
-                  if item.get("label") == "Supplier rainfall exposure"), None)
+                  if item.get("label") == "Supplier rainfall exposure" and item.get("included_in_score", True)), None)
             or "No validated business-specific problem can be confirmed until the data quality checks and available evidence are reviewed."
         ),
         "data_quality_issues": [
@@ -135,7 +135,8 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
                         "Return JSON with keys: summary (2-4 simple sentences), business_problem (one plain-language sentence), "
                         "positive_factors (array of short simple strings), risk_factors (array of short simple strings), "
                         "data_quality_issues (array of short strings), evidence_limitations (array of short strings). "
-                        "When supplier rainfall evidence and wood/timber material are present, explicitly connect the observed rainfall to the plausible wood and delivery impacts in plain language. "
+                        "When supplier rainfall evidence and wood/timber material are present and included_in_score is true, explicitly connect the observed rainfall to the plausible wood and delivery impacts in plain language. "
+                        "If included_in_score is false, state that the observation is contextual only and did not drive the score. Never present an excluded hazard as a score driver. "
                         "Mention the score adjustment is only a demo heuristic, not a validated credit model."
                     )},
                     {"role": "user", "content": json.dumps(evidence, ensure_ascii=False)},
