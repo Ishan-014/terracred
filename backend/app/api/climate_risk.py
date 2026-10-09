@@ -103,8 +103,8 @@ def _build_evidence_explanation(result: dict, baseline: int, penalty: int | None
                         "If any checks failed or warnings exist, clearly say what information is missing, invalid, or unverified before discussing risk. "
                         "Then explain in simple non-technical language what could disrupt this business, which exact observations support that concern, "
                         "and what evidence is not available. For a furniture maker buying wood from a supplier with high observed rainfall, explain the plausible chain: "
-                        "heavy rain or wet storage can make timber harder to dry and keep dry; high wood moisture can encourage mould/fungal decay and cause swelling, warping, "
-                        "or cracking; rain can also disrupt roads, timber handling, and deliveries, delaying furniture production. Present these as possible mechanisms, "
+                        "rain or wet storage can make timber harder to dry and keep dry; high wood moisture can encourage mould/fungal decay and cause swelling, warping, "
+                        "or cracking; rain can also disrupt roads, timber handling, and deliveries, delaying furniture production. A single daily maximum does not by itself prove an area is rain-prone. Present these as possible mechanisms, "
                         "not confirmed damage. Say that rainfall alone does not prove the wood got wet, the supplier was flooded, or deliveries were disrupted; those need "
                         "storage, humidity/moisture, flood, transport, or supplier records. Use the supplied material and location evidence; do not assume the business sells furniture "
                         "unless the input supports it. Do not call weather data a flood or damage proof. "
@@ -224,8 +224,9 @@ def assess_climate_risk(business_id: str, payload: ClimateRiskRequest):
                         if wood_related:
                             explanation = (
                                 f"The supplier's weather data records a maximum daily rainfall of {rain_mm} mm "
-                                f"at {context['location'] or 'the entered supplier location'}. Because this supplier provides {material}, "
-                                "heavy rain can make timber storage, drying, and transport harder to manage. If wood stays damp, "
+                                f"at {context['location'] or 'the entered supplier location'} during the retrieved period. "
+                                f"Because this supplier provides {material}, rain can make timber storage, drying, and transport harder to manage "
+                                "when storage or transport is exposed. If wood stays damp, "
                                 "it may develop mould or fungal decay, swell, warp, or crack; rain-related road or handling disruption "
                                 "can also delay deliveries and interrupt furniture production. These are plausible risks, not proof that "
                                 "this supplier's wood was wet, damaged, flooded, or delivered late."
