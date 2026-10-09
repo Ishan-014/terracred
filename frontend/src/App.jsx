@@ -5,7 +5,8 @@ import "./styles.css";
 const API = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const initial = {
   business_name: "", industry: "Manufacturing", place_name: "", latitude: "", longitude: "",
-  supplier_name: "", material_supplied: "", procurement_share: "40",
+  supplier_name: "", supplier_place_name: "", supplier_latitude: "", supplier_longitude: "",
+  material_supplied: "", procurement_share: "40",
   alternative_supplier_available: false, critical_to_operations: true,
   fallback_available: false, verification_status: "unverified"
 };
@@ -65,8 +66,18 @@ export default function App() {
     if (!form.business_name.trim() || !form.industry.trim()) { setError("Enter the business name and industry."); return; }
     if (form.latitude === "" || form.longitude === "") { setError("Enter the business latitude and longitude so the backend can retrieve location-based climate evidence."); return; }
     if (!form.supplier_name.trim()) { setError("Enter at least one supplier name."); return; }
-    const lat = Number(form.latitude), lon = Number(form.longitude), share = Number(form.procurement_share), base = 750;
+    if (form.supplier_latitude === "" || form.supplier_longitude === "") {
+      setError("Enter the supplier's location coordinates so rainfall is checked at the supplier, not at your shop.");
+      return;
+    }
+    const lat = Number(form.latitude), lon = Number(form.longitude);
+    const supplierLat = Number(form.supplier_latitude), supplierLon = Number(form.supplier_longitude);
+    const share = Number(form.procurement_share), base = 750;
     if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lon) || lon < -180 || lon > 180) { setError("Enter valid latitude and longitude values."); return; }
+    if (!Number.isFinite(supplierLat) || supplierLat < -90 || supplierLat > 90 || !Number.isFinite(supplierLon) || supplierLon < -180 || supplierLon > 180) {
+      setError("Enter valid supplier latitude and longitude values.");
+      return;
+    }
     if (!Number.isFinite(share) || share < 0 || share > 100) { setError("Supplier purchase share must be between 0 and 100%."); return; }
 
     setBusy(true); setError(""); setMessage(""); setReport(null);
@@ -90,6 +101,13 @@ export default function App() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           supplier_name: form.supplier_name.trim(),
+          supplier_location: {
+            latitude: supplierLat, longitude: supplierLon,
+            place_name: form.supplier_place_name.trim() || null,
+            admin_area: form.supplier_place_name.trim() || null,
+            source: "manually entered for supplier-specific rainfall assessment",
+            verification_status: "unverified"
+          },
           material_supplied: form.material_supplied.trim() || null,
           procurement_share: share,
           critical_to_operations: form.critical_to_operations,
@@ -145,7 +163,10 @@ export default function App() {
         <div className="form-divider"/>
         <div className="form-subhead">Supplier information</div>
         <Field label="Supplier name"><input value={form.supplier_name} onChange={(e) => change("supplier_name", e.target.value)} placeholder="Main supplier"/></Field>
-        <Field label="Material or service supplied"><input value={form.material_supplied} onChange={(e) => change("material_supplied", e.target.value)} placeholder="e.g. raw materials, packaging"/></Field>
+        <Field label="Material or service supplied"><input value={form.material_supplied} onChange={(e) => change("material_supplied", e.target.value)} placeholder="e.g. raw timber, plywood"/></Field>
+        <Field label="Supplier location" hint="Enter the supplier's area, not your shop's location"><input value={form.supplier_place_name} onChange={(e) => change("supplier_place_name", e.target.value)} placeholder="Supplier city or district"/></Field>
+        <div className="two-fields"><Field label="Supplier latitude"><input type="number" step="any" value={form.supplier_latitude} onChange={(e) => change("supplier_latitude", e.target.value)} placeholder="Supplier latitude"/></Field><Field label="Supplier longitude"><input type="number" step="any" value={form.supplier_longitude} onChange={(e) => change("supplier_longitude", e.target.value)} placeholder="Supplier longitude"/></Field></div>
+        <p className="privacy-note">TerraCred retrieves historical rainfall at these supplier coordinates. For wood/timber, the AI explains possible moisture, mould, warping, storage, and delivery impacts—but rainfall alone does not prove damage.</p>
         <Field label="Share of purchases from this supplier (%)"><input type="number" min="0" max="100" value={form.procurement_share} onChange={(e) => change("procurement_share", e.target.value)}/></Field>
         <Field label="Is this supplier critical to operations?"><select value={String(form.critical_to_operations)} onChange={(e) => change("critical_to_operations", e.target.value === "true")}><option value="true">Yes</option><option value="false">No</option></select></Field>
         <Field label="Can you switch to an alternative supplier?"><select value={String(form.alternative_supplier_available)} onChange={(e) => change("alternative_supplier_available", e.target.value === "true")}><option value="false">No</option><option value="true">Yes</option></select></Field>
