@@ -160,6 +160,12 @@ def calculate_climate_risk(
     }
     if hazard_score is None:
         missing.append("No supported hazard evidence was available for numeric scoring.")
+    quality_check(
+        "Climate evidence availability",
+        hazard_score is not None,
+        "At least one valid weather indicator was available." if hazard_score is not None
+        else "No valid weather indicator was available; local climate evidence is missing.",
+    )
 
     # Operational vulnerability: score only known answers, with transparent ratios.
     vulnerability_signals: list[float] = []
@@ -235,6 +241,12 @@ def calculate_climate_risk(
         missing.append("No supplier relationships are recorded.")
     elif any(s.get("verification_status") != "verified" for s in suppliers):
         warnings.append("Some supplier relationships are unverified or have unknown verification status.")
+    quality_check(
+        "Supplier information",
+        bool(suppliers) and all(s.get("verification_status") == "verified" for s in suppliers),
+        "Supplier records are present and verified." if suppliers and all(s.get("verification_status") == "verified" for s in suppliers)
+        else "Supplier details are missing or unverified; supplier findings are provisional.",
+    )
 
     # Evidence quality is reported separately and is not treated as a risk score.
     verification_values = []
@@ -263,6 +275,8 @@ def calculate_climate_risk(
     overall_status = "experimental_indicator" if overall_score is not None else "insufficient_evidence"
     if overall_score is not None and len(available_scores) < 3:
         warnings.append("Overall indicator uses only available dimensions; missing dimensions were not assumed safe.")
+    if overall_score is not None and (hazard_score is None or not valid_coordinates):
+        warnings.append("The overall indicator is provisional because valid location-based climate evidence is missing.")
     warnings.append("Prototype weights and thresholds are illustrative and have not been scientifically validated.")
     warnings.append("Climate-risk output must not replace conventional credit assessment or automatically decide lending.")
 
@@ -275,6 +289,16 @@ def calculate_climate_risk(
         "experimental_climate_risk_indicator": overall_score,
         "dimensions": dimensions,
         "evidence_items": evidence_items,
+        "data_quality": {
+            "status": "needs_review" if any(item["status"] in {"warning", "blocking"} for item in data_quality_checks) else "passed",
+            "checks": data_quality_checks,
+            "issue_count": sum(1 for item in data_quality_checks if item["status"] in {"warning", "blocking"}),
+            "summary": (
+                "Some information is missing, invalid, or unverified. Treat this result as provisional."
+                if any(item["status"] in {"warning", "blocking"} for item in data_quality_checks)
+                else "Basic data checks passed. The model is still an experimental prototype."
+            ),
+        },
         "missing_inputs": sorted(set(missing)),
         "warnings": warnings,
         "conventional_credit_score": None,
