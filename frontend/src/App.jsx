@@ -164,6 +164,23 @@ export default function App() {
         <div className="risk-summary"><div><small>CLIMATE RISK INDICATOR</small><strong>{risk ?? "—"}<span>/100</span></strong></div><div><small>CLIMATE PENALTY</small><strong>{report.climate_penalty_points ?? "—"}<span> points</span></strong></div></div>
       </>}
       <div className="result-explanation"><strong>How the score changed</strong><p>{report.credit_score_methodology}</p><p>The climate indicator is returned by the TerraCred backend scoring engine. Higher indicator values produce a larger score reduction in this demo. The starting score is fixed at 750 for demonstration because Udyam does not contain a credit score.</p></div>
+      {report.evidence_explanation && <div className="result-explanation evidence-explanation">
+        <strong>Evidence-based explanation {report.evidence_explanation.generated_by === "openai" ? "· OpenAI" : "· Rule-based fallback"}</strong>
+        <p>{report.evidence_explanation.summary}</p>
+        {(report.evidence_explanation.risk_factors || []).length > 0 && <><strong>Factors increasing risk</strong><ul>{report.evidence_explanation.risk_factors.map((item,i)=><li key={"risk"+i}>{item}</li>)}</ul></>}
+        {(report.evidence_explanation.positive_factors || []).length > 0 && <><strong>Lower-risk signals</strong><ul>{report.evidence_explanation.positive_factors.map((item,i)=><li key={"positive"+i}>{item}</li>)}</ul></>}
+        {(report.evidence_explanation.evidence_limitations || []).length > 0 && <><strong>Evidence gaps and caveats</strong><ul>{report.evidence_explanation.evidence_limitations.map((item,i)=><li key={"limit"+i}>{item}</li>)}</ul></>}
+      </div>}
+      {(report.evidence_items || []).length > 0 && <div className="result-explanation">
+        <strong>Observed evidence used by the engine</strong>
+        {report.evidence_items.map((item,i)=><div key={i} className="evidence-item">
+          <b>{String(item.hazard_type || item.dimension || "Evidence").replaceAll("_"," ")}</b>
+          <p>{item.interpretation || "Weather-derived observation"}</p>
+          <pre>{JSON.stringify(item.observed_evidence || {}, null, 2)}</pre>
+          <small>Prototype signal: {item.prototype_signal_score}/100 · This is a proxy, not a property-damage probability.</small>
+          {item.limitations?.map((lim,j)=><small key={j}>{lim}</small>)}
+        </div>)}
+      </div>}
       {(report.warnings || []).length > 0 && <div className="result-warnings"><strong>Data warnings</strong><ul>{report.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
       <div className="result-actions"><button className="simple-button secondary-button" onClick={() => { setStep(2); setReport(null); setMessage(""); setError(""); }}>Edit details</button><button className="simple-button" onClick={() => {setStep(1);setFile(null);setUpload(null);setReport(null);setForm(initial);setMessage("");setError("");}}>New assessment</button></div>
       <p className="disclaimer">Hackathon demonstration only. The baseline and score-band mapping are illustrative, not a validated lending score. OCR-extracted details may be inaccurate and are not officially verified. Do not use this output to approve or reject credit.</p>
