@@ -28,3 +28,16 @@ Unknown, unsupported, unavailable, and unverified information is returned as war
 ## Not included in this fast prototype
 
 No ML training, claimed predictive accuracy, GST/Udyam-based supplier verification, property-damage probability, automatic lending decision, or production-grade multi-user deployment.
+
+
+## Climate-adjusted score demo
+
+The streamlined frontend starts with a Udyam certificate upload, then collects a small set of business and supplier details. The upload endpoint stores the file locally but does not extract or verify its contents; details are manually entered.
+
+For the visual demonstration, the API accepts an assumed baseline score in the 300–900 range (default 750). If the existing climate-risk engine returns a numeric indicator, the demo applies:
+
+- Climate penalty = rounded climate-risk indicator × 3 points.
+- Climate-adjusted score = baseline score − climate penalty, bounded to 300–900.
+- Display bands: 300–549 Poor, 550–649 Fair, 650–749 Good, and 750–900 Excellent.
+
+This is an illustrative presentation mapping, not an established MSME credit-risk formula or validated credit score. A Udyam certificate does not itself provide the baseline credit score. The score must not be used to make real lending decisions. For a production system, the climate adjustment would need a justified, calibrated methodology and independently sourced conventional credit data.
