@@ -76,32 +76,68 @@ def calculate_climate_risk(
         evidence = hazard.get("evidence") or {}
         kind = hazard.get("hazard_type")
         signal = None
-        if kind == "precipitation_extremes":
-            value = evidence.get("max_daily_precipitation_mm")
-            if value is not None:
-                # Illustrative scale only: 100 mm/day maps to the cap.
-                signal = _clamp_percent(float(value))
-        elif kind == "temperature_extremes":
-            hot_days = evidence.get("hot_days_above_35c")
-            observed = evidence.get("days_with_observations")
-            if hot_days is not None and observed:
-                signal = _clamp_percent(float(hot_days) / float(observed) * 100)
-        elif kind == "wind_extremes":
-            value = evidence.get("max_daily_wind_speed_kmh")
-            if value is not None:
-                # Illustrative scale only: 100 km/h maps to the cap.
-                signal = _clamp_percent(float(value))
-        if signal is not None:
-            hazard_signals.append(signal)
-            evidence_items.append({
-                "dimension": "hazard_evidence",
-                "hazard_type": kind,
-                "observed_evidence": evidence,
-                "prototype_signal_score": signal,
-                "interpretation": hazard.get("interpretation"),
-                "limitations": hazard.get("limitations", []),
-            })
-            hazard_sources.append({
+        label = kind or "Weather evidence"
+        observed_value = None
+        unit = None
+        plain_explanation = None
+        try:
+            if kind == "precipitation_extremes":
+                value = evidence.get("max_daily_precipitation_mm")
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 2000:
+                    observed_value, unit = round(float(value), 2), "mm in one day"
+                    signal = _clamp_percent(float(value))
+                    label = "Heavy rainfall"
+                    plain_explanation = f"The highest recorded daily rainfall was {observed_value} mm. This can indicate heavy-rain exposure, but it does not prove flooding at the business."
+            elif kind == "temperature_extremes":
+                hot_days = evidence.get("hot_days_above_35c")
+                observed = evidence.get("days_with_observations")
+                if (isinstance(hot_days, (int, float)) and not isinstance(hot_days, bool)
+                    and isinstance(observed, (int, float)) and not isinstance(observed, bool)
+                    and observed > 0 and 0 <= hot_days <= observed):
+                    observed_value = f"{int(hot_days)} of {int(observed)} observed days"
+                    unit = "days"
+                    signal = _clamp_percent(float(hot_days) / float(observed) * 100)
+                    label = "Extreme heat"
+                    plain_explanation = f"Temperatures exceeded 35°C on {int(hot_days)} of {int(observed)} observed days. This is a heat-stress signal, not a direct estimate of business loss."
+            elif kind == "wind_extremes":
+                value = evidence.get("max_daily_wind_speed_kmh")
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 500:
+                    observed_value, unit = round(float(value), 2), "km/h"
+                    signal = _clamp_percent(float(value))
+                    label = "Strong wind"
+                    plain_explanation = f"The highest recorded daily wind speed was {observed_value} km/h. Actual damage depends on the building and local conditions."
+        except (TypeError, ValueError, OverflowError):
+            signal = None
+
+        if signal is None:
+            quality_check(
+                f"{kind or 'Hazard'} evidence",
+                False,
+                "Evidence is missing or outside expected numeric ranges, so it was excluded from scoring.",
+            )
+            warnings.append(f"{kind or 'Hazard'}: missing or invalid values; not scored.")
+            continue
+
+        quality_check(
+            f"{kind} evidence",
+            True,
+            "Required observation is present and passed basic range checks.",
+        )
+        hazard_signals.append(signal)
+        evidence_items.append({
+            "dimension": "hazard_evidence",
+            "hazard_type": kind,
+            "label": label,
+            "observed_value": observed_value,
+            "unit": unit,
+            "plain_explanation": plain_explanation,
+            "source": hazard.get("source"),
+            "source_url": hazard.get("source_url"),
+            "data_period": hazard.get("data_period"),
+            "prototype_signal_score": signal,
+            "limitations": hazard.get("limitations", []),
+        })
+        hazard_sources.append({
                 "hazard_type": kind,
                 "source": hazard.get("source"),
                 "source_url": hazard.get("source_url"),
