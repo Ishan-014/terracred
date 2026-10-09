@@ -7,11 +7,15 @@ from uuid import uuid4
 
 import fitz
 import pytesseract
+import os
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 router = APIRouter(prefix="/api/udyam", tags=["Udyam"])
 UPLOAD_DIR = Path("data") / "udyam_uploads"
+# Set TESSERACT_CMD in the environment to override this Windows default.
+TESSERACT_CMD = os.getenv("TESSERACT_CMD", r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe")
+pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 MAX_BYTES = 10 * 1024 * 1024
 ALLOWED_TYPES = {
     "application/pdf": ".pdf",
