@@ -164,21 +164,33 @@ export default function App() {
         <div className="risk-summary"><div><small>CLIMATE RISK INDICATOR</small><strong>{risk ?? "—"}<span>/100</span></strong></div><div><small>CLIMATE ADJUSTMENT</small><strong>{report.climate_adjustment_points > 0 ? `−${report.climate_adjustment_points}` : report.climate_adjustment_points < 0 ? `+${Math.abs(report.climate_adjustment_points)}` : (report.climate_adjustment_points ?? "—")}<span> points</span></strong></div></div>
       </>}
       <div className="result-explanation"><strong>How the score changed</strong><p>{report.credit_score_methodology}</p><p>The climate indicator is returned by the TerraCred backend scoring engine. Higher indicator values produce a larger score reduction in this demo. The starting score is fixed at 750 for demonstration because Udyam does not contain a credit score.</p></div>
+      {report.data_quality && <div className="result-explanation data-quality-panel">
+        <strong>1. Data quality check · {report.data_quality.status === "passed" ? "Basic checks passed" : "Needs review"}</strong>
+        <p>{report.data_quality.summary}</p>
+        {(report.data_quality.checks || []).map((item,i)=><div className="quality-check" key={i}>
+          <span className={item.status === "passed" ? "quality-dot passed" : "quality-dot issue"} />
+          <div><b>{item.check}</b><small>{item.detail}</small></div>
+        </div>)}
+      </div>}
       {report.evidence_explanation && <div className="result-explanation evidence-explanation">
-        <strong>Evidence-based explanation {report.evidence_explanation.generated_by === "openai" ? "· OpenAI" : "· Rule-based fallback"}</strong>
+        <strong>2. What this means for the business {report.evidence_explanation.generated_by === "openai" ? "· OpenAI" : "· Basic explanation"}</strong>
+        {report.evidence_explanation.business_problem && <p><b>Possible business problem:</b> {report.evidence_explanation.business_problem}</p>}
         <p>{report.evidence_explanation.summary}</p>
-        {(report.evidence_explanation.risk_factors || []).length > 0 && <><strong>Factors increasing risk</strong><ul>{report.evidence_explanation.risk_factors.map((item,i)=><li key={"risk"+i}>{item}</li>)}</ul></>}
-        {(report.evidence_explanation.positive_factors || []).length > 0 && <><strong>Lower-risk signals</strong><ul>{report.evidence_explanation.positive_factors.map((item,i)=><li key={"positive"+i}>{item}</li>)}</ul></>}
-        {(report.evidence_explanation.evidence_limitations || []).length > 0 && <><strong>Evidence gaps and caveats</strong><ul>{report.evidence_explanation.evidence_limitations.map((item,i)=><li key={"limit"+i}>{item}</li>)}</ul></>}
+        {(report.evidence_explanation.data_quality_issues || []).length > 0 && <><strong>Data issues to keep in mind</strong><ul>{report.evidence_explanation.data_quality_issues.map((item,i)=><li key={"dq"+i}>{item}</li>)}</ul></>}
+        {(report.evidence_explanation.risk_factors || []).length > 0 && <><strong>What could cause disruption</strong><ul>{report.evidence_explanation.risk_factors.map((item,i)=><li key={"risk"+i}>{item}</li>)}</ul></>}
+        {(report.evidence_explanation.positive_factors || []).length > 0 && <><strong>Potentially helpful signals</strong><ul>{report.evidence_explanation.positive_factors.map((item,i)=><li key={"positive"+i}>{item}</li>)}</ul></>}
+        {(report.evidence_explanation.evidence_limitations || []).length > 0 && <><strong>What we still don't know</strong><ul>{report.evidence_explanation.evidence_limitations.map((item,i)=><li key={"limit"+i}>{item}</li>)}</ul></>}
       </div>}
       {(report.evidence_items || []).length > 0 && <div className="result-explanation">
-        <strong>Observed evidence used by the engine</strong>
+        <strong>3. Evidence behind the explanation</strong>
         {report.evidence_items.map((item,i)=><div key={i} className="evidence-item">
-          <b>{String(item.hazard_type || item.dimension || "Evidence").replaceAll("_"," ")}</b>
-          <p>{item.interpretation || "Weather-derived observation"}</p>
-          <pre>{JSON.stringify(item.observed_evidence || {}, null, 2)}</pre>
-          <small>Prototype signal: {item.prototype_signal_score}/100 · This is a proxy, not a property-damage probability.</small>
-          {item.limitations?.map((lim,j)=><small key={j}>{lim}</small>)}
+          <b>{item.label || String(item.hazard_type || "Weather evidence").replaceAll("_"," ")}</b>
+          <p>{item.plain_explanation || "A valid observation was not available for this indicator."}</p>
+          {item.observed_value != null && <small><b>Observed:</b> {item.observed_value} {item.unit || ""}</small>}
+          {item.data_period && <small><b>Period:</b> {item.data_period.start || "unknown"} to {item.data_period.end || "unknown"}</small>}
+          {item.source && <small><b>Source:</b> {item.source}</small>}
+          {item.source_url && <small><a href={item.source_url} target="_blank" rel="noreferrer">View data source</a></small>}
+          <small>Prototype signal: {item.prototype_signal_score}/100. This is a simple proxy, not a damage probability.</small>
         </div>)}
       </div>}
       {(report.warnings || []).length > 0 && <div className="result-warnings"><strong>Data warnings</strong><ul>{report.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
